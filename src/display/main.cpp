@@ -21,59 +21,53 @@ String padded(int value) {
 }
 
 void printGPSData() {
-    if (gps.location.isValid()) {
-        String latStr = String(F("Lat: ")) + String(gps.location.lat(), 6);
-        terminal.print(latStr);
-        String lonStr = String(F("Lon: ")) + String(gps.location.lng(), 6);
-        terminal.print(lonStr);
-        String ageStr = String(F("Last fix age: ")) + String(gps.location.age()) + String(F("ms"));
-        terminal.print(ageStr);
-    }
-    if (gps.altitude.isValid()) {
-        String altStr = String(F("Alt: ")) + String(gps.altitude.meters()) + String(F("m"));
-        terminal.print(altStr);
-    }
-    if (gps.speed.isValid()) {
-        String speedStr = String(F("Speed: ")) + String(gps.speed.kmph()) + String(F(" km/h"));
-        terminal.print(speedStr);
-    }
-    if (gps.course.isValid()) {
-        String courseStr = String(F("Course: ")) + String(gps.course.deg()) + String(F(" deg"));
-        terminal.print(courseStr);
-    }
+    String latStr = String(F("Lat: ")) + String(gps.location.isValid() ? gps.location.lat() : 0.0, 6);
+    terminal.print(latStr);
+    String lonStr = String(F("Lon: ")) + String(gps.location.isValid() ? gps.location.lng() : 0.0, 6);
+    terminal.print(lonStr);
+    String ageStr = String(F("Last fix age: ")) + String(gps.location.isValid() ? gps.location.age() : 0) + String(F("ms"));
+    terminal.print(ageStr);
+    String altStr = String(F("Alt: ")) + String(gps.altitude.isValid() ? gps.altitude.meters() : 0.0) + String(F("m"));
+    terminal.print(altStr);
+    String speedStr = String(F("Speed: ")) + String(gps.speed.isValid() ? gps.speed.kmph() : 0.0) + String(F(" km/h"));
+    terminal.print(speedStr);
+    String courseStr = String(F("Course: ")) + String(gps.course.isValid() ? gps.course.deg() : 0.0) + String(F(" deg"));
+    terminal.print(courseStr);
+    String timeStr;
     if (gps.time.isValid()) {
-        String timeStr = padded(gps.time.hour()) + String(F(":")) + padded(gps.time.minute()) + String(F(":")) + padded(gps.time.second());
-        terminal.print(timeStr);
+        timeStr = padded(gps.time.hour()) + String(F(":")) + padded(gps.time.minute()) + String(F(":")) + padded(gps.time.second());
+    } else {
+        timeStr = F("00:00:00");
     }
+    terminal.print(timeStr);
+    String dateStr;
     if (gps.date.isValid()) {
-        String dateStr = String(F("Date: ")) + String(gps.date.year()) + String(F("/")) + padded(gps.date.month()) + String(F("/")) + padded(gps.date.day());
-        terminal.print(dateStr);
+        dateStr = String(F("Date: ")) + String(gps.date.year()) + String(F("/")) + padded(gps.date.month()) + String(F("/")) + padded(gps.date.day());
+    } else {
+        dateStr = F("Date: 0000/00/00");
     }
-    if (gps.satellites.isValid()) {
-        String satsStr = String(F("Sats: ")) + String(gps.satellites.value());
-        terminal.print(satsStr);
-    }
-    if (gps.hdop.isValid()) {
-        String hdopStr = String(F("HDOP: ")) + String(gps.hdop.hdop(), 2);
-        terminal.print(hdopStr);
-    }
+    terminal.print(dateStr);
+    String satsStr = String(F("Sats: ")) + String(gps.satellites.isValid() ? gps.satellites.value() : 0);
+    terminal.print(satsStr);
+    String hdopStr = String(F("HDOP: ")) + String(gps.hdop.isValid() ? gps.hdop.hdop() : 0.0, 2);
+    terminal.print(hdopStr);
     terminal.print(String(F("-")));
 }
 
 void setup() {
     Serial.begin(SERIAL_BAUD);
     terminal.init();
-    terminal.print(F("GPS Ready"));
+    terminal.print(F("Ready"));
     GPS_Serial.begin(GPS_BAUD, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
 }
 
 void loop() {
     while (GPS_Serial.available() > 0) {
-        if (gps.encode(GPS_Serial.read())) {
-            if (gps.location.isValid() && (lastPrint == 0 || millis() - lastPrint >= PRINT_INTERVAL)) {
-                printGPSData();
-                lastPrint = millis();
-            }
-        }
+        gps.encode(GPS_Serial.read());
+    }
+    if (lastPrint == 0 || millis() - lastPrint >= PRINT_INTERVAL) {
+        printGPSData();
+        lastPrint = millis();
     }
 }
+
