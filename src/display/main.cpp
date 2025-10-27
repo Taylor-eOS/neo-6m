@@ -49,6 +49,15 @@ void printGPSData() {
     terminal.print(dateStr);
     String satsStr = String(F("Sats: ")) + String(gps.satellites.isValid() ? gps.satellites.value() : 0);
     terminal.print(satsStr);
+    String fixTypeStr;
+    if (!gps.location.isValid()) {
+        fixTypeStr = F("No fix");
+    } else if (gps.altitude.isValid()) {
+        fixTypeStr = F("3D fix");
+    } else {
+        fixTypeStr = F("2D fix");
+    }
+    terminal.print(String(F("Fix type: ")) + fixTypeStr);
     String hdopStr = String(F("HDOP: ")) + String(gps.hdop.isValid() ? gps.hdop.hdop() : 0.0, 2);
     terminal.print(hdopStr);
     terminal.print(String(F("-")));
