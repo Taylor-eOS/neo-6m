@@ -32,9 +32,8 @@ void tftLine(int row, const char* buf) {
     }
 }
 
-void drawGPSData() {
+void drawPosition(int &row) {
     char buf[MAX_COLS + 1];
-    int row = 0;
     double lat = gps.location.isValid() ? gps.location.lat() : 0.0;
     double lon = gps.location.isValid() ? gps.location.lng() : 0.0;
     snprintf(buf, sizeof(buf), "Lat:  %.6f", lat);
@@ -59,12 +58,20 @@ void drawGPSData() {
     tftLine(row++, buf);
     snprintf(buf, sizeof(buf), "Age:  %lums", gps.location.isValid() ? gps.location.age() : 0UL);
     tftLine(row++, buf);
+}
+
+void drawMotion(int &row) {
+    char buf[MAX_COLS + 1];
     snprintf(buf, sizeof(buf), "Alt:  %.1f m", gps.altitude.isValid() ? gps.altitude.meters() : 0.0);
     tftLine(row++, buf);
     snprintf(buf, sizeof(buf), "Spd:  %.1f km/h", gps.speed.isValid() ? gps.speed.kmph() : 0.0);
     tftLine(row++, buf);
     snprintf(buf, sizeof(buf), "Crs:  %.1f deg", gps.course.isValid() ? gps.course.deg() : 0.0);
     tftLine(row++, buf);
+}
+
+void drawDateTime(int &row) {
+    char buf[MAX_COLS + 1];
     if (gps.time.isValid()) {
         snprintf(buf, sizeof(buf), "Time: %02d:%02d:%02d", gps.time.hour(), gps.time.minute(), gps.time.second());
     } else {
@@ -77,6 +84,10 @@ void drawGPSData() {
         snprintf(buf, sizeof(buf), "Date: ----/--/--");
     }
     tftLine(row++, buf);
+}
+
+void drawSignal(int &row) {
+    char buf[MAX_COLS + 1];
     snprintf(buf, sizeof(buf), "Sats: %u", gps.satellites.isValid() ? gps.satellites.value() : 0u);
     tftLine(row++, buf);
     const char* fixType = !gps.location.isValid() ? "No fix" : gps.altitude.isValid() ? "3D fix" : "2D fix";
@@ -84,6 +95,14 @@ void drawGPSData() {
     tftLine(row++, buf);
     snprintf(buf, sizeof(buf), "HDOP: %.2f", gps.hdop.isValid() ? gps.hdop.hdop() : 0.0);
     tftLine(row++, buf);
+}
+
+void drawGPSData() {
+    int row = 0;
+    drawPosition(row);
+    drawMotion(row);
+    drawDateTime(row);
+    drawSignal(row);
 }
 
 void setup() {
