@@ -8,8 +8,8 @@
 const int TFT_CS  = 5;
 const int TFT_DC  = 17;
 const int TFT_RST = 16;
-const int GPS_RX_PIN = 4;
-const int GPS_TX_PIN = 15;
+//const int GPS_RX_PIN = 4;
+//const int GPS_TX_PIN = 33;
 const unsigned long PRINT_INTERVAL = 3000UL;
 const unsigned long SERIAL_BAUD = 115200;
 const unsigned long GPS_BAUD = 9600;
