@@ -35,9 +35,27 @@ void tftLine(int row, const char* buf) {
 void drawGPSData() {
     char buf[MAX_COLS + 1];
     int row = 0;
-    snprintf(buf, sizeof(buf), "Lat:  %.6f", gps.location.isValid() ? gps.location.lat() : 0.0);
+    double lat = gps.location.isValid() ? gps.location.lat() : 0.0;
+    double lon = gps.location.isValid() ? gps.location.lng() : 0.0;
+    snprintf(buf, sizeof(buf), "Lat:  %.6f", lat);
     tftLine(row++, buf);
-    snprintf(buf, sizeof(buf), "Lon:  %.6f", gps.location.isValid() ? gps.location.lng() : 0.0);
+    snprintf(buf, sizeof(buf), "Lon:  %.6f", lon);
+    tftLine(row++, buf);
+    double absLat = fabs(lat);
+    int latDeg = (int)absLat;
+    double latMinFull = (absLat - latDeg) * 60.0;
+    int latMin = (int)latMinFull;
+    double latSec = (latMinFull - latMin) * 60.0;
+    char latDir = lat >= 0 ? 'N' : 'S';
+    snprintf(buf, sizeof(buf), "  %d*%d'%.2f\"%c", latDeg, latMin, latSec, latDir);
+    tftLine(row++, buf);
+    double absLon = fabs(lon);
+    int lonDeg = (int)absLon;
+    double lonMinFull = (absLon - lonDeg) * 60.0;
+    int lonMin = (int)lonMinFull;
+    double lonSec = (lonMinFull - lonMin) * 60.0;
+    char lonDir = lon >= 0 ? 'E' : 'W';
+    snprintf(buf, sizeof(buf), "  %d*%d'%.2f\"%c", lonDeg, lonMin, lonSec, lonDir);
     tftLine(row++, buf);
     snprintf(buf, sizeof(buf), "Age:  %lums", gps.location.isValid() ? gps.location.age() : 0UL);
     tftLine(row++, buf);
@@ -61,7 +79,7 @@ void drawGPSData() {
     tftLine(row++, buf);
     snprintf(buf, sizeof(buf), "Sats: %u", gps.satellites.isValid() ? gps.satellites.value() : 0u);
     tftLine(row++, buf);
-    const char* fixType = !gps.location.isValid() ? "No fix" : gps.altitude.isValid()   ? "3D fix" : "2D fix";
+    const char* fixType = !gps.location.isValid() ? "No fix" : gps.altitude.isValid() ? "3D fix" : "2D fix";
     snprintf(buf, sizeof(buf), "Fix:  %s", fixType);
     tftLine(row++, buf);
     snprintf(buf, sizeof(buf), "HDOP: %.2f", gps.hdop.isValid() ? gps.hdop.hdop() : 0.0);
