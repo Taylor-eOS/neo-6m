@@ -13,6 +13,7 @@ const int TFT_RST = 16;
 const unsigned long PRINT_INTERVAL = 3000UL;
 const unsigned long SERIAL_BAUD = 115200;
 const unsigned long GPS_BAUD = 9600;
+const unsigned long LOOP_DELAY = 200;
 const int CHAR_W = 6;
 const int CHAR_H = 8;
 const int MAX_COLS = 26;
@@ -127,4 +128,5 @@ void loop() {
         drawGPSData();
         lastPrint = millis();
     }
+    delay(LOOP_DELAY);
 }
