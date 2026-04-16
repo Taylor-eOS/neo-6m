@@ -8,12 +8,9 @@
 const int TFT_CS  = 5;
 const int TFT_DC  = 17;
 const int TFT_RST = 16;
-//const int GPS_RX_PIN = 4;
-//const int GPS_TX_PIN = 33;
-const unsigned long PRINT_INTERVAL = 3000UL;
+const unsigned long UPDATE_INTERVAL = 1000UL;
 const unsigned long SERIAL_BAUD = 115200;
 const unsigned long GPS_BAUD = 9600;
-const unsigned long LOOP_DELAY = 200;
 const int CHAR_W = 6;
 const int CHAR_H = 8;
 const int MAX_COLS = 26;
@@ -123,10 +120,10 @@ void loop() {
     while (GPS_Serial.available() > 0) {
         gps.encode(GPS_Serial.read());
     }
-    if (firstRun || millis() - lastPrint >= PRINT_INTERVAL) {
+    if (firstRun || millis() - lastPrint >= UPDATE_INTERVAL) {
         firstRun = false;
         drawGPSData();
         lastPrint = millis();
     }
-    delay(LOOP_DELAY);
+    delay(UPDATE_INTERVAL);
 }
