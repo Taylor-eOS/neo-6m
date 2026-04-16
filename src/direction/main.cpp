@@ -19,6 +19,9 @@ const int MAX_COLS = 160;
 #define MAX_POINTS 12
 #define MIN_MOVE_METERS 3.0
 #define MIN_TOTAL_SPAN 8.0
+#define DEAD_ZONE 20.0
+#define HARD_TURN 70.0
+#define HYST 10.0
 Adafruit_ST7735 tft(TFT_CS, TFT_DC, TFT_RST);
 HardwareSerial GPS_Serial(2);
 TinyGPSPlus gps;
@@ -33,6 +36,16 @@ struct GeoPoint {
 GeoPoint buffer[MAX_POINTS];
 int bufferCount = 0;
 double lastHeading = NAN;
+
+enum DirState {
+    STRAIGHT,
+    LEFT,
+    RIGHT,
+    HARD_LEFT,
+    HARD_RIGHT
+};
+
+DirState currentState = STRAIGHT;
 
 double toRadians(double deg) {
     return deg * PI / 180.0;
@@ -57,8 +70,7 @@ double bearingBetween(GeoPoint a, GeoPoint b) {
     double lat2 = toRadians(b.lat);
     double dLon = toRadians(b.lon - a.lon);
     double y = sin(dLon) * cos(lat2);
-    double x = cos(lat1)*sin(lat2) -
-               sin(lat1)*cos(lat2)*cos(dLon);
+    double x = cos(lat1)*sin(lat2) - sin(lat1)*cos(lat2)*cos(dLon);
     double brng = atan2(y, x);
     brng = toDegrees(brng);
     if (brng < 0) brng += 360.0;
@@ -110,16 +122,6 @@ bool computeHeading(double &headingOut) {
     return true;
 }
 
-void tftLine(int row, const char* buf) {
-    tft.setCursor(0, row * CHAR_H);
-    tft.setTextColor(ST7735_WHITE, ST7735_BLACK);
-    int len = strlen(buf);
-    tft.print(buf);
-    for (int i = len; i < MAX_COLS; i++) {
-        tft.print(' ');
-    }
-}
-
 bool computeShortHeading(double &headingOut, double &strengthOut) {
     if (bufferCount < 2) return false;
     GeoPoint a = buffer[bufferCount - 2];
@@ -127,7 +129,7 @@ bool computeShortHeading(double &headingOut, double &strengthOut) {
     double d = haversineDistance(a, b);
     if (d < MIN_MOVE_METERS) return false;
     headingOut = bearingBetween(a, b);
-    double strength = d / 10.0;
+    double strength = d / 6.0;
     if (strength > 1.0) strength = 1.0;
     strengthOut = strength;
     return true;
@@ -140,6 +142,42 @@ double blendAngles(double a, double b, double w) {
     result = toDegrees(result);
     if (result < 0) result += 360.0;
     return result;
+}
+
+DirState updateState(double correction) {
+    DirState next = currentState;
+    switch (currentState) {
+        case STRAIGHT:
+            if (correction > HARD_TURN) next = HARD_RIGHT;
+            else if (correction > DEAD_ZONE) next = RIGHT;
+            else if (correction < -HARD_TURN) next = HARD_LEFT;
+            else if (correction < -DEAD_ZONE) next = LEFT;
+            break;
+        case RIGHT:
+            if (correction < DEAD_ZONE - HYST) next = STRAIGHT;
+            else if (correction > HARD_TURN + HYST) next = HARD_RIGHT;
+            break;
+        case LEFT:
+            if (correction > -DEAD_ZONE + HYST) next = STRAIGHT;
+            else if (correction < -HARD_TURN - HYST) next = HARD_LEFT;
+            break;
+        case HARD_RIGHT:
+            if (correction < HARD_TURN - HYST) next = RIGHT;
+            break;
+        case HARD_LEFT:
+            if (correction > -HARD_TURN + HYST) next = LEFT;
+            break;
+    }
+    currentState = next;
+    return next;
+}
+
+void tftLine(int row, const char* buf) {
+    tft.setCursor(0, row * CHAR_H);
+    tft.setTextColor(ST7735_WHITE, ST7735_BLACK);
+    int len = strlen(buf);
+    tft.print(buf);
+    for (int i = len; i < MAX_COLS; i++) tft.print(' ');
 }
 
 void drawNavigation(int &row) {
@@ -156,25 +194,25 @@ void drawNavigation(int &row) {
     double shortHeading;
     double shortStrength;
     bool hasShort = computeShortHeading(shortHeading, shortStrength);
-    if (hasLong) {
-        lastHeading = longHeading;
-    }
+    if (hasLong) lastHeading = longHeading;
     double finalHeading = lastHeading;
     if (hasShort && !isnan(lastHeading)) {
-        double w = shortStrength;
-        finalHeading = blendAngles(lastHeading, shortHeading, w);
+        finalHeading = blendAngles(lastHeading, shortHeading, shortStrength);
     }
     double targetBearing = bearingBetween({lat, lon}, {targetLat, targetLon});
     if (!isnan(finalHeading)) {
         double correction = angleDiff(targetBearing, finalHeading);
-        snprintf(buf, sizeof(buf), "Head: %.1f", finalHeading);
+        DirState state = updateState(correction);
+        snprintf(buf, sizeof(buf), "Turn: %.0f", correction);
         tftLine(row++, buf);
-        snprintf(buf, sizeof(buf), "Targ: %.1f", targetBearing);
-        tftLine(row++, buf);
-        snprintf(buf, sizeof(buf), "Turn: %.1f", correction);
-        tftLine(row++, buf);
+        const char* text = "STRAIGHT";
+        if (state == LEFT) text = "LEFT";
+        if (state == RIGHT) text = "RIGHT";
+        if (state == HARD_LEFT) text = "HARD LEFT";
+        if (state == HARD_RIGHT) text = "HARD RIGHT";
+        tftLine(row++, text);
     } else {
-        tftLine(row++, "Move to init...");
+        tftLine(row++, "Move to init");
     }
 }
 
