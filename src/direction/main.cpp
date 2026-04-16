@@ -12,9 +12,10 @@ const int TFT_RST = 16;
 const unsigned long UPDATE_INTERVAL = 1000UL;
 const unsigned long SERIAL_BAUD = 115200;
 const unsigned long GPS_BAUD = 9600;
-const int CHAR_W = 6;
-const int CHAR_H = 8;
-const int MAX_COLS = 26;
+const int TEXT_SCALE = 2;
+const int CHAR_W = 6 * TEXT_SCALE;
+const int CHAR_H = 8 * TEXT_SCALE;
+const int MAX_COLS = 160;
 #define MAX_POINTS 12
 #define MIN_MOVE_METERS 3.0
 #define MIN_TOTAL_SPAN 8.0
@@ -119,6 +120,28 @@ void tftLine(int row, const char* buf) {
     }
 }
 
+bool computeShortHeading(double &headingOut, double &strengthOut) {
+    if (bufferCount < 2) return false;
+    GeoPoint a = buffer[bufferCount - 2];
+    GeoPoint b = buffer[bufferCount - 1];
+    double d = haversineDistance(a, b);
+    if (d < MIN_MOVE_METERS) return false;
+    headingOut = bearingBetween(a, b);
+    double strength = d / 10.0;
+    if (strength > 1.0) strength = 1.0;
+    strengthOut = strength;
+    return true;
+}
+
+double blendAngles(double a, double b, double w) {
+    double x = cos(toRadians(a)) * (1.0 - w) + cos(toRadians(b)) * w;
+    double y = sin(toRadians(a)) * (1.0 - w) + sin(toRadians(b)) * w;
+    double result = atan2(y, x);
+    result = toDegrees(result);
+    if (result < 0) result += 360.0;
+    return result;
+}
+
 void drawNavigation(int &row) {
     char buf[MAX_COLS + 1];
     if (!gps.location.isValid()) {
@@ -128,15 +151,23 @@ void drawNavigation(int &row) {
     double lat = gps.location.lat();
     double lon = gps.location.lng();
     addPoint(lat, lon);
-    double heading;
-    bool validHeading = computeHeading(heading);
-    double targetBearing = bearingBetween({lat, lon}, {targetLat, targetLon});
-    if (validHeading) {
-        lastHeading = heading;
+    double longHeading;
+    bool hasLong = computeHeading(longHeading);
+    double shortHeading;
+    double shortStrength;
+    bool hasShort = computeShortHeading(shortHeading, shortStrength);
+    if (hasLong) {
+        lastHeading = longHeading;
     }
-    if (!isnan(lastHeading)) {
-        double correction = angleDiff(targetBearing, lastHeading);
-        snprintf(buf, sizeof(buf), "Head: %.1f", lastHeading);
+    double finalHeading = lastHeading;
+    if (hasShort && !isnan(lastHeading)) {
+        double w = shortStrength;
+        finalHeading = blendAngles(lastHeading, shortHeading, w);
+    }
+    double targetBearing = bearingBetween({lat, lon}, {targetLat, targetLon});
+    if (!isnan(finalHeading)) {
+        double correction = angleDiff(targetBearing, finalHeading);
+        snprintf(buf, sizeof(buf), "Head: %.1f", finalHeading);
         tftLine(row++, buf);
         snprintf(buf, sizeof(buf), "Targ: %.1f", targetBearing);
         tftLine(row++, buf);
@@ -152,9 +183,9 @@ void drawGPSData() {
     char buf[MAX_COLS + 1];
     double lat = gps.location.isValid() ? gps.location.lat() : 0.0;
     double lon = gps.location.isValid() ? gps.location.lng() : 0.0;
-    snprintf(buf, sizeof(buf), "Lat: %.6f", lat);
+    snprintf(buf, sizeof(buf), "%.6f", lat);
     tftLine(row++, buf);
-    snprintf(buf, sizeof(buf), "Lon: %.6f", lon);
+    snprintf(buf, sizeof(buf), "%.6f", lon);
     tftLine(row++, buf);
     drawNavigation(row);
 }
@@ -164,7 +195,7 @@ void setup() {
     tft.initR(INITR_BLACKTAB);
     tft.setRotation(1);
     tft.fillScreen(ST7735_BLACK);
-    tft.setTextSize(1);
+    tft.setTextSize(TEXT_SCALE);
     tft.setTextWrap(false);
     tft.setCursor(0, 0);
     tft.print("Ready");
