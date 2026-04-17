@@ -128,6 +128,7 @@ void drawGPSData() {
 
 void setup() {
     Serial.begin(SERIAL_BAUD);
+    pinMode(BTN_PIN, INPUT_PULLUP);
     pinMode(BTN_SKIP_PIN, INPUT_PULLUP);
     tft.initR(INITR_BLACKTAB);
     tft.setRotation(1);
