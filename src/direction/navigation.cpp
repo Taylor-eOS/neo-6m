@@ -3,24 +3,18 @@
 
 #define MAX_POINTS 12
 #define MIN_MOVE_METERS 3.0
-#define MIN_TOTAL_SPAN 8.0
-#define DEAD_ZONE 20.0
-#define HARD_TURN 70.0
-#define HYST 10.0
+#define MIN_TOTAL_SPAN 15.0
 #define WAYPOINT_RADIUS 18.0
 #define APPROACH_RADIUS 50.0
 
 static GeoPoint buffer[MAX_POINTS];
 static int bufferCount = 0;
 static double lastHeading = NAN;
-static DirState currentState = STRAIGHT;
 static const GeoPoint* wpList = nullptr;
 static int wpCount = 0;
 static int wpIndex = 0;
 static bool justAdvanced = false;
 static double correctionBias = 0.0;
-static DirState lockedTurn = STRAIGHT;
-static bool hasLock = false;
 
 double toRadians(double deg) {
     return deg * M_PI / 180.0;
@@ -62,8 +56,8 @@ double angleDiff(double a, double b) {
 void nav_init() {
     bufferCount = 0;
     lastHeading = NAN;
-    currentState = STRAIGHT;
     justAdvanced = false;
+    correctionBias = 0.0;
 }
 
 void nav_add_point(double lat, double lon) {
@@ -71,6 +65,29 @@ void nav_add_point(double lat, double lon) {
     if (bufferCount > 0) {
         double d = haversineDistance(buffer[bufferCount - 1], p);
         if (d < MIN_MOVE_METERS) return;
+    }
+    if (bufferCount >= 2) {
+        GeoPoint a = buffer[bufferCount - 2];
+        GeoPoint b = buffer[bufferCount - 1];
+        double prevBearing = bearingBetween(a, b);
+        double newBearing = bearingBetween(b, p);
+        double delta = fabs(angleDiff(newBearing, prevBearing));
+        bool sharpTurn = delta > 45.0;
+        bool gradualTurn = false;
+        if (bufferCount >= 4) {
+            GeoPoint c = buffer[bufferCount - 4];
+            double olderBearing = bearingBetween(c, a);
+            double accumulated = fabs(angleDiff(newBearing, olderBearing));
+            if (accumulated > 60.0) gradualTurn = true;
+        }
+        if (sharpTurn || gradualTurn) {
+            buffer[0] = b;
+            buffer[1] = p;
+            bufferCount = 2;
+            lastHeading = newBearing;
+            correctionBias = 0.0;
+            return;
+        }
     }
     if (bufferCount < MAX_POINTS) {
         buffer[bufferCount++] = p;
@@ -91,7 +108,8 @@ static bool computeHeading(double &headingOut) {
         double d = haversineDistance(buffer[i-1], buffer[i]);
         if (d < 1.0) continue;
         double b = bearingBetween(buffer[i-1], buffer[i]);
-        double w = (double)i / bufferCount;
+        double t = (double)i / bufferCount;
+        double w = t * t;
         sumX += cos(toRadians(b)) * w;
         sumY += sin(toRadians(b)) * w;
         weightSum += w;
@@ -154,47 +172,14 @@ double nav_get_correction(double lat, double lon, double targetLat, double targe
     double targetBearing = bearingBetween({lat, lon}, {targetLat, targetLon});
     double raw = angleDiff(targetBearing, heading);
     double adjusted = angleDiff(raw, correctionBias);
-    if (fabs(raw) < 40.0) {
+    if (fabs(adjusted) < 25.0) {
         correctionBias = correctionBias * 0.98 + raw * 0.02;
     }
     return adjusted;
 }
 
 DirState nav_get_state(double correction) {
-    if (!hasLock && fabs(correction) > 25.0) {
-        if (correction > 0) lockedTurn = (correction > HARD_TURN) ? HARD_RIGHT : RIGHT;
-        else lockedTurn = (correction < -HARD_TURN) ? HARD_LEFT : LEFT;
-        hasLock = true;
-    }
-    if (hasLock) return lockedTurn;
-    DirState next = currentState;
-    switch (currentState) {
-        case ARRIVING:
-            next = STRAIGHT;
-            break;
-        case STRAIGHT:
-            if (correction > HARD_TURN) next = HARD_RIGHT;
-            else if (correction > DEAD_ZONE) next = RIGHT;
-            else if (correction < -HARD_TURN) next = HARD_LEFT;
-            else if (correction < -DEAD_ZONE) next = LEFT;
-            break;
-        case RIGHT:
-            if (correction < DEAD_ZONE - HYST) next = STRAIGHT;
-            else if (correction > HARD_TURN + HYST) next = HARD_RIGHT;
-            break;
-        case LEFT:
-            if (correction > -DEAD_ZONE + HYST) next = STRAIGHT;
-            else if (correction < -HARD_TURN - HYST) next = HARD_LEFT;
-            break;
-        case HARD_RIGHT:
-            if (correction < HARD_TURN - HYST) next = RIGHT;
-            break;
-        case HARD_LEFT:
-            if (correction > -HARD_TURN + HYST) next = LEFT;
-            break;
-    }
-    currentState = next;
-    return next;
+    return STRAIGHT;
 }
 
 void nav_waypoints_init(const GeoPoint* points, int count, double lat, double lon) {
@@ -216,16 +201,42 @@ void nav_waypoints_init(const GeoPoint* points, int count, double lat, double lo
     wpIndex = best;
 }
 
+static void computeSegmentMetrics(GeoPoint p, GeoPoint a, GeoPoint b, double &along, double &cross) {
+    double d13 = haversineDistance(a, p);
+    double theta13 = toRadians(bearingBetween(a, p));
+    double theta12 = toRadians(bearingBetween(a, b));
+    double R = 6371000.0;
+    double delta13 = d13 / R;
+    double crossRad = asin(sin(delta13) * sin(theta13 - theta12));
+    cross = fabs(crossRad * R);
+    double alongRad = acos(cos(delta13) / cos(crossRad));
+    along = alongRad * R;
+    double segLen = haversineDistance(a, b);
+    if (along > segLen) along = segLen;
+}
+
 void nav_waypoints_update(double lat, double lon) {
     justAdvanced = false;
     if (wpList == nullptr || wpIndex >= wpCount) return;
     GeoPoint here = {lat, lon};
-    double d = haversineDistance(here, wpList[wpIndex]);
+    GeoPoint target = wpList[wpIndex];
+    double d = haversineDistance(here, target);
+    if (wpIndex > 0) {
+        GeoPoint prev = wpList[wpIndex - 1];
+        double along, cross;
+        computeSegmentMetrics(here, prev, target, along, cross);
+        double segLen = haversineDistance(prev, target);
+        bool reachedByProgress = along > segLen * 0.9 && cross < 25.0;
+        bool reachedByDistance = d <= WAYPOINT_RADIUS;
+        if ((reachedByProgress || reachedByDistance) && wpIndex < wpCount - 1) {
+            wpIndex++;
+            justAdvanced = true;
+            return;
+        }
+    }
     if (d <= WAYPOINT_RADIUS && wpIndex < wpCount - 1) {
         wpIndex++;
         justAdvanced = true;
-        currentState = STRAIGHT;
-        hasLock = false;
     }
 }
 
@@ -233,7 +244,6 @@ void nav_waypoints_skip() {
     if (wpList != nullptr && wpIndex < wpCount - 1) {
         wpIndex++;
         justAdvanced = true;
-        currentState = STRAIGHT;
     }
 }
 

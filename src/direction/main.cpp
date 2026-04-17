@@ -139,7 +139,7 @@ void drawNavigation(int &row) {
             if (state == RIGHT)      text = "RIGHT";
             if (state == HARD_LEFT)  text = "HARD LEFT";
             if (state == HARD_RIGHT) text = "HARD RIGHT";
-            tftLine(row++, text);
+            if (false) tftLine(row++, text);
         } else {
             tftLine(row++, "Move to init");
         }
