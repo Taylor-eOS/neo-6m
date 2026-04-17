@@ -19,9 +19,11 @@ const int TEXT_SCALE = 2;
 const int CHAR_W     = 6 * TEXT_SCALE;
 const int CHAR_H     = 8 * TEXT_SCALE;
 const int MAX_COLS   = 160;
+
 Adafruit_ST7735 tft(TFT_CS, TFT_DC, TFT_RST);
 HardwareSerial GPS_Serial(2);
 TinyGPSPlus gps;
+
 unsigned long lastPrint       = 0;
 unsigned long lastBtnTime     = 0;
 bool firstRun                 = true;
@@ -35,6 +37,15 @@ void tftLine(int row, const char* buf) {
     int len = strlen(buf);
     tft.print(buf);
     for (int i = len; i < MAX_COLS; i++) tft.print(' ');
+}
+
+void tftLineColored(int row, const char* buf, uint16_t color) {
+    tft.setCursor(0, row * CHAR_H);
+    tft.setTextColor(color, ST7735_BLACK);
+    int len = strlen(buf);
+    tft.print(buf);
+    for (int i = len; i < MAX_COLS; i++) tft.print(' ');
+    tft.setTextColor(ST7735_WHITE, ST7735_BLACK);
 }
 
 void activateRoute(double lat, double lon) {
@@ -72,28 +83,66 @@ void drawNavigation(int &row) {
     snprintf(buf, sizeof(buf), "Route: %s", routes[currentRoute].name);
     tftLine(row++, buf);
     if (nav_waypoints_done()) {
-        tftLine(row++, "Arrived!");
+        tftLineColored(row++, "** ARRIVED **", ST7735_GREEN);
         return;
     }
-    GeoPoint target = nav_waypoints_current();
-    double dist = nav_waypoints_distance(lat, lon);
-    snprintf(buf, sizeof(buf), "WP %d/%d  %dm",
-        nav_waypoints_index() + 1, nav_waypoints_count(), (int)dist);
-    tftLine(row++, buf);
-    nav_add_point(lat, lon);
-    if (nav_has_heading()) {
-        double correction = nav_get_correction(lat, lon, target.lat, target.lon);
-        DirState state = nav_get_state(correction);
-        snprintf(buf, sizeof(buf), "Turn: %.0f", correction);
-        tftLine(row++, buf);
-        const char* text = "STRAIGHT";
-        if (state == LEFT)       text = "LEFT";
-        if (state == RIGHT)      text = "RIGHT";
-        if (state == HARD_LEFT)  text = "HARD LEFT";
-        if (state == HARD_RIGHT) text = "HARD RIGHT";
-        tftLine(row++, text);
+    if (nav_waypoints_just_advanced()) {
+        tftLineColored(row++, "** WAYPOINT **", ST7735_GREEN);
     } else {
-        tftLine(row++, "Move to init");
+        double dist = nav_waypoints_distance(lat, lon);
+        snprintf(buf, sizeof(buf), "WP %d/%d  %dm",
+            nav_waypoints_index() + 1, nav_waypoints_count(), (int)dist);
+        tftLine(row++, buf);
+    }
+    bool inApproach = nav_waypoints_in_approach(lat, lon);
+    GeoPoint target = nav_waypoints_current();
+    nav_add_point(lat, lon);
+    if (inApproach) {
+        double nextBearing = nav_waypoints_next_bearing();
+        if (nextBearing >= 0) {
+            const char* cardinal;
+            int nb = (int)(nextBearing + 22.5) % 360 / 45;
+            if      (nb == 0) cardinal = "N";
+            else if (nb == 1) cardinal = "NE";
+            else if (nb == 2) cardinal = "E";
+            else if (nb == 3) cardinal = "SE";
+            else if (nb == 4) cardinal = "S";
+            else if (nb == 5) cardinal = "SW";
+            else if (nb == 6) cardinal = "W";
+            else              cardinal = "NW";
+            snprintf(buf, sizeof(buf), "Head %s (%.0f)", cardinal, nextBearing);
+            tftLineColored(row++, buf, ST7735_YELLOW);
+            if (nav_has_heading()) {
+                double correction = nav_get_correction(lat, lon, target.lat, target.lon);
+                DirState state = nav_get_state(correction);
+                const char* text = "STRAIGHT";
+                if (state == LEFT)       text = "LEFT";
+                if (state == RIGHT)      text = "RIGHT";
+                if (state == HARD_LEFT)  text = "HARD LEFT";
+                if (state == HARD_RIGHT) text = "HARD RIGHT";
+                tftLineColored(row++, text, ST7735_YELLOW);
+            } else {
+                tftLineColored(row++, "APPROACHING", ST7735_YELLOW);
+            }
+        } else {
+            tftLineColored(row++, "FINAL WP", ST7735_YELLOW);
+            tftLineColored(row++, "APPROACHING", ST7735_YELLOW);
+        }
+    } else {
+        if (nav_has_heading()) {
+            double correction = nav_get_correction(lat, lon, target.lat, target.lon);
+            DirState state = nav_get_state(correction);
+            snprintf(buf, sizeof(buf), "Turn: %.0f", correction);
+            tftLine(row++, buf);
+            const char* text = "STRAIGHT";
+            if (state == LEFT)       text = "LEFT";
+            if (state == RIGHT)      text = "RIGHT";
+            if (state == HARD_LEFT)  text = "HARD LEFT";
+            if (state == HARD_RIGHT) text = "HARD RIGHT";
+            tftLine(row++, text);
+        } else {
+            tftLine(row++, "Move to init");
+        }
     }
 }
 

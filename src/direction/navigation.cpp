@@ -7,7 +7,8 @@
 #define DEAD_ZONE 20.0
 #define HARD_TURN 70.0
 #define HYST 10.0
-#define WAYPOINT_RADIUS 10.0
+#define WAYPOINT_RADIUS 18.0
+#define APPROACH_RADIUS 50.0
 
 static GeoPoint buffer[MAX_POINTS];
 static int bufferCount = 0;
@@ -16,6 +17,10 @@ static DirState currentState = STRAIGHT;
 static const GeoPoint* wpList = nullptr;
 static int wpCount = 0;
 static int wpIndex = 0;
+static bool justAdvanced = false;
+static double correctionBias = 0.0;
+static DirState lockedTurn = STRAIGHT;
+static bool hasLock = false;
 
 double toRadians(double deg) {
     return deg * M_PI / 180.0;
@@ -58,6 +63,7 @@ void nav_init() {
     bufferCount = 0;
     lastHeading = NAN;
     currentState = STRAIGHT;
+    justAdvanced = false;
 }
 
 void nav_add_point(double lat, double lon) {
@@ -146,12 +152,26 @@ double nav_get_heading() {
 double nav_get_correction(double lat, double lon, double targetLat, double targetLon) {
     double heading = nav_get_heading();
     double targetBearing = bearingBetween({lat, lon}, {targetLat, targetLon});
-    return angleDiff(targetBearing, heading);
+    double raw = angleDiff(targetBearing, heading);
+    double adjusted = angleDiff(raw, correctionBias);
+    if (fabs(raw) < 40.0) {
+        correctionBias = correctionBias * 0.98 + raw * 0.02;
+    }
+    return adjusted;
 }
 
 DirState nav_get_state(double correction) {
+    if (!hasLock && fabs(correction) > 25.0) {
+        if (correction > 0) lockedTurn = (correction > HARD_TURN) ? HARD_RIGHT : RIGHT;
+        else lockedTurn = (correction < -HARD_TURN) ? HARD_LEFT : LEFT;
+        hasLock = true;
+    }
+    if (hasLock) return lockedTurn;
     DirState next = currentState;
     switch (currentState) {
+        case ARRIVING:
+            next = STRAIGHT;
+            break;
         case STRAIGHT:
             if (correction > HARD_TURN) next = HARD_RIGHT;
             else if (correction > DEAD_ZONE) next = RIGHT;
@@ -181,6 +201,7 @@ void nav_waypoints_init(const GeoPoint* points, int count, double lat, double lo
     wpList = points;
     wpCount = count;
     wpIndex = 0;
+    justAdvanced = false;
     if (count <= 0) return;
     GeoPoint here = {lat, lon};
     int best = 0;
@@ -196,17 +217,23 @@ void nav_waypoints_init(const GeoPoint* points, int count, double lat, double lo
 }
 
 void nav_waypoints_update(double lat, double lon) {
+    justAdvanced = false;
     if (wpList == nullptr || wpIndex >= wpCount) return;
     GeoPoint here = {lat, lon};
     double d = haversineDistance(here, wpList[wpIndex]);
     if (d <= WAYPOINT_RADIUS && wpIndex < wpCount - 1) {
         wpIndex++;
+        justAdvanced = true;
+        currentState = STRAIGHT;
+        hasLock = false;
     }
 }
 
 void nav_waypoints_skip() {
     if (wpList != nullptr && wpIndex < wpCount - 1) {
         wpIndex++;
+        justAdvanced = true;
+        currentState = STRAIGHT;
     }
 }
 
@@ -231,4 +258,19 @@ double nav_waypoints_distance(double lat, double lon) {
     if (wpList == nullptr || wpIndex >= wpCount) return -1.0;
     GeoPoint here = {lat, lon};
     return haversineDistance(here, wpList[wpIndex]);
+}
+
+bool nav_waypoints_just_advanced() {
+    return justAdvanced;
+}
+
+double nav_waypoints_next_bearing() {
+    if (wpList == nullptr || wpIndex + 1 >= wpCount) return -1.0;
+    return bearingBetween(wpList[wpIndex], wpList[wpIndex + 1]);
+}
+
+bool nav_waypoints_in_approach(double lat, double lon) {
+    if (wpList == nullptr || wpIndex >= wpCount) return false;
+    GeoPoint here = {lat, lon};
+    return haversineDistance(here, wpList[wpIndex]) <= APPROACH_RADIUS;
 }

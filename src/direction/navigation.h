@@ -10,7 +10,8 @@ enum DirState {
     LEFT,
     RIGHT,
     HARD_LEFT,
-    HARD_RIGHT
+    HARD_RIGHT,
+    ARRIVING
 };
 
 void nav_init();
@@ -28,3 +29,6 @@ int nav_waypoints_index();
 int nav_waypoints_count();
 GeoPoint nav_waypoints_current();
 double nav_waypoints_distance(double lat, double lon);
+bool nav_waypoints_just_advanced();
+double nav_waypoints_next_bearing();
+bool nav_waypoints_in_approach(double lat, double lon);
