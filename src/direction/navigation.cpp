@@ -58,6 +58,9 @@ void nav_init() {
     lastHeading = NAN;
     justAdvanced = false;
     correctionBias = 0.0;
+    wpList = nullptr;
+    wpCount = 0;
+    wpIndex = 0;
 }
 
 void nav_add_point(double lat, double lon) {
@@ -84,7 +87,7 @@ void nav_add_point(double lat, double lon) {
             buffer[0] = b;
             buffer[1] = p;
             bufferCount = 2;
-            lastHeading = newBearing;
+            lastHeading = NAN;
             correctionBias = 0.0;
             return;
         }
@@ -189,16 +192,23 @@ void nav_waypoints_init(const GeoPoint* points, int count, double lat, double lo
     justAdvanced = false;
     if (count <= 0) return;
     GeoPoint here = {lat, lon};
-    int best = 0;
+    int bestIndex = 0;
     double bestDist = haversineDistance(here, points[0]);
     for (int i = 1; i < count; i++) {
         double d = haversineDistance(here, points[i]);
         if (d < bestDist) {
             bestDist = d;
-            best = i;
+            bestIndex = i;
         }
     }
-    wpIndex = best;
+    wpIndex = bestIndex;
+    if (wpIndex < wpCount - 1) {
+        double dCurrent = haversineDistance(here, points[wpIndex]);
+        double dNext = haversineDistance(here, points[wpIndex + 1]);
+        if (dNext < dCurrent) {
+            wpIndex++;
+        }
+    }
 }
 
 static void computeSegmentMetrics(GeoPoint p, GeoPoint a, GeoPoint b, double &along, double &cross) {
