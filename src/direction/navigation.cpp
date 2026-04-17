@@ -7,13 +7,12 @@
 #define DEAD_ZONE 20.0
 #define HARD_TURN 70.0
 #define HYST 10.0
-#define WAYPOINT_RADIUS 20.0
+#define WAYPOINT_RADIUS 10.0
 
 static GeoPoint buffer[MAX_POINTS];
 static int bufferCount = 0;
 static double lastHeading = NAN;
 static DirState currentState = STRAIGHT;
-
 static const GeoPoint* wpList = nullptr;
 static int wpCount = 0;
 static int wpIndex = 0;

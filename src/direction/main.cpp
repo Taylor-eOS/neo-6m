@@ -7,24 +7,27 @@
 #include "target_position.h"
 #include "navigation.h"
 
-const int TFT_CS  = 5;
-const int TFT_DC  = 17;
-const int TFT_RST = 16;
-const unsigned long UPDATE_INTERVAL = 1000UL;
-const unsigned long SERIAL_BAUD = 115200;
-const unsigned long GPS_BAUD = 9600;
+const int TFT_CS   = 5;
+const int TFT_DC   = 17;
+const int TFT_RST  = 16;
+const int BTN_PIN  = 25;
+const unsigned long UPDATE_INTERVAL  = 1000UL;
+const unsigned long SERIAL_BAUD      = 115200;
+const unsigned long GPS_BAUD         = 9600;
+const unsigned long DEBOUNCE_MS      = 50UL;
 const int TEXT_SCALE = 2;
-const int CHAR_W = 6 * TEXT_SCALE;
-const int CHAR_H = 8 * TEXT_SCALE;
-const int MAX_COLS = 160;
-
+const int CHAR_W     = 6 * TEXT_SCALE;
+const int CHAR_H     = 8 * TEXT_SCALE;
+const int MAX_COLS   = 160;
 Adafruit_ST7735 tft(TFT_CS, TFT_DC, TFT_RST);
 HardwareSerial GPS_Serial(2);
 TinyGPSPlus gps;
-
-unsigned long lastPrint = 0;
-bool firstRun = true;
-bool waypointsInitialized = false;
+unsigned long lastPrint       = 0;
+unsigned long lastBtnTime     = 0;
+bool firstRun                 = true;
+bool waypointsInitialized     = false;
+bool lastBtnState             = HIGH;
+int currentRoute              = 0;
 
 void tftLine(int row, const char* buf) {
     tft.setCursor(0, row * CHAR_H);
@@ -32,6 +35,26 @@ void tftLine(int row, const char* buf) {
     int len = strlen(buf);
     tft.print(buf);
     for (int i = len; i < MAX_COLS; i++) tft.print(' ');
+}
+
+void activateRoute(double lat, double lon) {
+    const RouteEntry& r = routes[currentRoute];
+    nav_init();
+    nav_waypoints_init(r.points, r.count, lat, lon);
+    waypointsInitialized = true;
+}
+
+void checkButton() {
+    bool state = digitalRead(BTN_PIN);
+    if (lastBtnState == HIGH && state == LOW) {
+        unsigned long now = millis();
+        if (now - lastBtnTime >= DEBOUNCE_MS) {
+            lastBtnTime = now;
+            currentRoute = (currentRoute + 1) % routeCount;
+            waypointsInitialized = false;
+        }
+    }
+    lastBtnState = state;
 }
 
 void drawNavigation(int &row) {
@@ -43,10 +66,11 @@ void drawNavigation(int &row) {
     double lat = gps.location.lat();
     double lon = gps.location.lng();
     if (!waypointsInitialized) {
-        nav_waypoints_init(waypoints, waypointCount, lat, lon);
-        waypointsInitialized = true;
+        activateRoute(lat, lon);
     }
     nav_waypoints_update(lat, lon);
+    snprintf(buf, sizeof(buf), "Route: %s", routes[currentRoute].name);
+    tftLine(row++, buf);
     if (nav_waypoints_done()) {
         tftLine(row++, "Arrived!");
         return;
@@ -63,9 +87,9 @@ void drawNavigation(int &row) {
         snprintf(buf, sizeof(buf), "Turn: %.0f", correction);
         tftLine(row++, buf);
         const char* text = "STRAIGHT";
-        if (state == LEFT) text = "LEFT";
-        if (state == RIGHT) text = "RIGHT";
-        if (state == HARD_LEFT) text = "HARD LEFT";
+        if (state == LEFT)       text = "LEFT";
+        if (state == RIGHT)      text = "RIGHT";
+        if (state == HARD_LEFT)  text = "HARD LEFT";
         if (state == HARD_RIGHT) text = "HARD RIGHT";
         tftLine(row++, text);
     } else {
@@ -87,6 +111,7 @@ void drawGPSData() {
 
 void setup() {
     Serial.begin(SERIAL_BAUD);
+    pinMode(BTN_PIN, INPUT_PULLUP);
     tft.initR(INITR_BLACKTAB);
     tft.setRotation(1);
     tft.fillScreen(ST7735_BLACK);
@@ -102,6 +127,7 @@ void loop() {
     while (GPS_Serial.available() > 0) {
         gps.encode(GPS_Serial.read());
     }
+    checkButton();
     if (firstRun || millis() - lastPrint >= UPDATE_INTERVAL) {
         firstRun = false;
         drawGPSData();
