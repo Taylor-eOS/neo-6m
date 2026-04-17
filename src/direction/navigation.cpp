@@ -87,7 +87,6 @@ void nav_add_point(double lat, double lon) {
             buffer[0] = b;
             buffer[1] = p;
             bufferCount = 2;
-            lastHeading = NAN;
             correctionBias = 0.0;
             return;
         }
@@ -162,10 +161,17 @@ double nav_get_heading() {
     double shortStrength;
     bool hasLong = computeHeading(longHeading);
     bool hasShort = computeShortHeading(shortHeading, shortStrength);
-    if (hasLong) lastHeading = longHeading;
+    if (hasLong) {
+        if (isnan(lastHeading)) {
+            lastHeading = longHeading;
+        } else {
+            lastHeading = blendAngles(lastHeading, longHeading, 0.2);
+        }
+    }
     double finalHeading = lastHeading;
     if (hasShort && !isnan(lastHeading)) {
-        finalHeading = blendAngles(lastHeading, shortHeading, shortStrength);
+        double w = shortStrength * 0.5;
+        finalHeading = blendAngles(lastHeading, shortHeading, w);
     }
     return finalHeading;
 }
@@ -237,7 +243,7 @@ void nav_waypoints_update(double lat, double lon) {
         computeSegmentMetrics(here, prev, target, along, cross);
         double segLen = haversineDistance(prev, target);
         bool reachedByProgress = along > segLen * 0.9 && cross < 25.0;
-        bool reachedByDistance = d <= WAYPOINT_RADIUS;
+        bool reachedByDistance = d <= WAYPOINT_RADIUS && cross < 25.0;
         if ((reachedByProgress || reachedByDistance) && wpIndex < wpCount - 1) {
             wpIndex++;
             justAdvanced = true;
