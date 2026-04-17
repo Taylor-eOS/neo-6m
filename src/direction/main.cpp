@@ -19,7 +19,8 @@ const int TEXT_SCALE = 2;
 const int CHAR_W     = 6 * TEXT_SCALE;
 const int CHAR_H     = 8 * TEXT_SCALE;
 const int MAX_COLS   = 160;
-
+const int BTN_SKIP_PIN = 26;
+bool lastSkipState = HIGH;
 Adafruit_ST7735 tft(TFT_CS, TFT_DC, TFT_RST);
 HardwareSerial GPS_Serial(2);
 TinyGPSPlus gps;
@@ -66,6 +67,12 @@ void checkButton() {
         }
     }
     lastBtnState = state;
+
+    bool skipState = digitalRead(BTN_SKIP_PIN);
+    if (lastSkipState == HIGH && skipState == LOW) {
+        nav_waypoints_skip();
+    }
+    lastSkipState = skipState;
 }
 
 void drawNavigation(int &row) {
@@ -121,7 +128,7 @@ void drawGPSData() {
 
 void setup() {
     Serial.begin(SERIAL_BAUD);
-    pinMode(BTN_PIN, INPUT_PULLUP);
+    pinMode(BTN_SKIP_PIN, INPUT_PULLUP);
     tft.initR(INITR_BLACKTAB);
     tft.setRotation(1);
     tft.fillScreen(ST7735_BLACK);

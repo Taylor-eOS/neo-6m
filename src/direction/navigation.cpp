@@ -1,3 +1,4 @@
+#include <Arduino.h>
 #include <math.h>
 #include "navigation.h"
 
@@ -15,6 +16,7 @@ static int wpCount = 0;
 static int wpIndex = 0;
 static bool justAdvanced = false;
 static double correctionBias = 0.0;
+static unsigned long closeStartTime = 0;
 
 double toRadians(double deg) {
     return deg * M_PI / 180.0;
@@ -54,6 +56,7 @@ double angleDiff(double a, double b) {
 }
 
 void nav_init() {
+    closeStartTime = 0;
     bufferCount = 0;
     lastHeading = NAN;
     justAdvanced = false;
@@ -170,7 +173,7 @@ double nav_get_heading() {
     }
     double finalHeading = lastHeading;
     if (hasShort && !isnan(lastHeading)) {
-        double w = shortStrength * 0.5;
+        double w = shortStrength * 0.2;
         finalHeading = blendAngles(lastHeading, shortHeading, w);
     }
     return finalHeading;
@@ -237,22 +240,39 @@ void nav_waypoints_update(double lat, double lon) {
     GeoPoint here = {lat, lon};
     GeoPoint target = wpList[wpIndex];
     double d = haversineDistance(here, target);
+    unsigned long now = millis();
+    if (d < 50.0) {
+        if (closeStartTime == 0) {
+            closeStartTime = now;
+        } else if (now - closeStartTime > 60000UL) {
+            if (wpIndex < wpCount - 1) {
+                wpIndex++;
+                justAdvanced = true;
+                closeStartTime = 0;
+                return;
+            }
+        }
+    } else {
+        closeStartTime = 0;
+    }
     if (wpIndex > 0) {
         GeoPoint prev = wpList[wpIndex - 1];
         double along, cross;
         computeSegmentMetrics(here, prev, target, along, cross);
         double segLen = haversineDistance(prev, target);
         bool reachedByProgress = along > segLen * 0.9 && cross < 25.0;
-        bool reachedByDistance = d <= WAYPOINT_RADIUS && cross < 25.0;
+        bool reachedByDistance = d <= WAYPOINT_RADIUS;
         if ((reachedByProgress || reachedByDistance) && wpIndex < wpCount - 1) {
             wpIndex++;
             justAdvanced = true;
+            closeStartTime = 0;
             return;
         }
     }
     if (d <= WAYPOINT_RADIUS && wpIndex < wpCount - 1) {
         wpIndex++;
         justAdvanced = true;
+        closeStartTime = 0;
     }
 }
 
