@@ -24,13 +24,13 @@ bool lastSkipState = HIGH;
 Adafruit_ST7735 tft(TFT_CS, TFT_DC, TFT_RST);
 HardwareSerial GPS_Serial(2);
 TinyGPSPlus gps;
-
-unsigned long lastPrint       = 0;
-unsigned long lastBtnTime     = 0;
-bool firstRun                 = true;
-bool waypointsInitialized     = false;
-bool lastBtnState             = HIGH;
-int currentRoute              = 0;
+unsigned long lastPrint = 0;
+unsigned long lastBtnTime = 0;
+unsigned long lastSkipTime = 0;
+bool firstRun = true;
+bool waypointsInitialized = false;
+bool lastBtnState = HIGH;
+int currentRoute = 0;
 
 void tftLine(int row, const char* buf) {
     tft.setCursor(0, row * CHAR_H);
@@ -50,26 +50,25 @@ void tftLineColored(int row, const char* buf, uint16_t color) {
 }
 
 void activateRoute(double lat, double lon) {
-    const RouteEntry& r = routes[currentRoute];
     nav_init();
+    const RouteEntry& r = routes[currentRoute];
     nav_waypoints_init(r.points, r.count, lat, lon);
     waypointsInitialized = true;
 }
 
 void checkButton() {
+    unsigned long now = millis();
     bool state = digitalRead(BTN_PIN);
-    if (lastBtnState == HIGH && state == LOW) {
-        unsigned long now = millis();
-        if (now - lastBtnTime >= DEBOUNCE_MS) {
-            lastBtnTime = now;
-            currentRoute = (currentRoute + 1) % routeCount;
-            waypointsInitialized = false;
-        }
+    if (lastBtnState == HIGH && state == LOW && now - lastBtnTime >= DEBOUNCE_MS) {
+        lastBtnTime = now;
+        currentRoute = (currentRoute + 1) % routeCount;
+        waypointsInitialized = false;
+        nav_init();
     }
     lastBtnState = state;
-
     bool skipState = digitalRead(BTN_SKIP_PIN);
-    if (lastSkipState == HIGH && skipState == LOW) {
+    if (lastSkipState == HIGH && skipState == LOW && now - lastSkipTime >= DEBOUNCE_MS) {
+        lastSkipTime = now;
         nav_waypoints_skip();
     }
     lastSkipState = skipState;
@@ -91,6 +90,7 @@ void drawNavigation(int &row) {
     tftLine(row++, buf);
     if (nav_waypoints_done()) {
         tftLineColored(row++, "** ARRIVED **", ST7735_GREEN);
+        waypointsInitialized = false;
         return;
     }
     if (nav_waypoints_just_advanced()) {
