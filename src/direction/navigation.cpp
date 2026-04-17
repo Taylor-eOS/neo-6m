@@ -7,11 +7,16 @@
 #define DEAD_ZONE 20.0
 #define HARD_TURN 70.0
 #define HYST 10.0
+#define WAYPOINT_RADIUS 20.0
 
 static GeoPoint buffer[MAX_POINTS];
 static int bufferCount = 0;
 static double lastHeading = NAN;
 static DirState currentState = STRAIGHT;
+
+static const GeoPoint* wpList = nullptr;
+static int wpCount = 0;
+static int wpIndex = 0;
 
 double toRadians(double deg) {
     return deg * M_PI / 180.0;
@@ -70,7 +75,7 @@ void nav_add_point(double lat, double lon) {
     }
 }
 
-bool computeHeading(double &headingOut) {
+static bool computeHeading(double &headingOut) {
     if (bufferCount < 3) return false;
     double totalSpan = haversineDistance(buffer[0], buffer[bufferCount - 1]);
     if (totalSpan < MIN_TOTAL_SPAN) return false;
@@ -94,7 +99,7 @@ bool computeHeading(double &headingOut) {
     return true;
 }
 
-bool computeShortHeading(double &headingOut, double &strengthOut) {
+static bool computeShortHeading(double &headingOut, double &strengthOut) {
     if (bufferCount < 2) return false;
     GeoPoint a = buffer[bufferCount - 2];
     GeoPoint b = buffer[bufferCount - 1];
@@ -107,7 +112,7 @@ bool computeShortHeading(double &headingOut, double &strengthOut) {
     return true;
 }
 
-double blendAngles(double a, double b, double w) {
+static double blendAngles(double a, double b, double w) {
     double x = cos(toRadians(a)) * (1.0 - w) + cos(toRadians(b)) * w;
     double y = sin(toRadians(a)) * (1.0 - w) + sin(toRadians(b)) * w;
     double result = atan2(y, x);
@@ -171,4 +176,60 @@ DirState nav_get_state(double correction) {
     }
     currentState = next;
     return next;
+}
+
+void nav_waypoints_init(const GeoPoint* points, int count, double lat, double lon) {
+    wpList = points;
+    wpCount = count;
+    wpIndex = 0;
+    if (count <= 0) return;
+    GeoPoint here = {lat, lon};
+    int best = 0;
+    double bestDist = haversineDistance(here, points[0]);
+    for (int i = 1; i < count; i++) {
+        double d = haversineDistance(here, points[i]);
+        if (d < bestDist) {
+            bestDist = d;
+            best = i;
+        }
+    }
+    wpIndex = best;
+}
+
+void nav_waypoints_update(double lat, double lon) {
+    if (wpList == nullptr || wpIndex >= wpCount) return;
+    GeoPoint here = {lat, lon};
+    double d = haversineDistance(here, wpList[wpIndex]);
+    if (d <= WAYPOINT_RADIUS && wpIndex < wpCount - 1) {
+        wpIndex++;
+    }
+}
+
+void nav_waypoints_skip() {
+    if (wpList != nullptr && wpIndex < wpCount - 1) {
+        wpIndex++;
+    }
+}
+
+bool nav_waypoints_done() {
+    return wpList == nullptr || wpIndex >= wpCount;
+}
+
+int nav_waypoints_index() {
+    return wpIndex;
+}
+
+int nav_waypoints_count() {
+    return wpCount;
+}
+
+GeoPoint nav_waypoints_current() {
+    if (wpList == nullptr || wpIndex >= wpCount) return {0.0, 0.0};
+    return wpList[wpIndex];
+}
+
+double nav_waypoints_distance(double lat, double lon) {
+    if (wpList == nullptr || wpIndex >= wpCount) return -1.0;
+    GeoPoint here = {lat, lon};
+    return haversineDistance(here, wpList[wpIndex]);
 }

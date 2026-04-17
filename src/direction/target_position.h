@@ -1,7 +1,10 @@
-#ifndef TARGET_POSITION_H
-#define TARGET_POSITION_H
+#pragma once
+#include "navigation.h"
 
-const double targetLat = 00.000000;
-const double targetLon = 00.000000;
-
-#endif
+const GeoPoint waypoints[] = {
+    {10.000000, 10.000000},
+    {10.000000, 10.000000},
+    {10.000000, 10.000000},
+    {10.000000, 10.000000},
+};
+const int waypointCount = sizeof(waypoints) / sizeof(waypoints[0]);

@@ -24,6 +24,7 @@ TinyGPSPlus gps;
 
 unsigned long lastPrint = 0;
 bool firstRun = true;
+bool waypointsInitialized = false;
 
 void tftLine(int row, const char* buf) {
     tft.setCursor(0, row * CHAR_H);
@@ -41,9 +42,23 @@ void drawNavigation(int &row) {
     }
     double lat = gps.location.lat();
     double lon = gps.location.lng();
+    if (!waypointsInitialized) {
+        nav_waypoints_init(waypoints, waypointCount, lat, lon);
+        waypointsInitialized = true;
+    }
+    nav_waypoints_update(lat, lon);
+    if (nav_waypoints_done()) {
+        tftLine(row++, "Arrived!");
+        return;
+    }
+    GeoPoint target = nav_waypoints_current();
+    double dist = nav_waypoints_distance(lat, lon);
+    snprintf(buf, sizeof(buf), "WP %d/%d  %dm",
+        nav_waypoints_index() + 1, nav_waypoints_count(), (int)dist);
+    tftLine(row++, buf);
     nav_add_point(lat, lon);
     if (nav_has_heading()) {
-        double correction = nav_get_correction(lat, lon, targetLat, targetLon);
+        double correction = nav_get_correction(lat, lon, target.lat, target.lon);
         DirState state = nav_get_state(correction);
         snprintf(buf, sizeof(buf), "Turn: %.0f", correction);
         tftLine(row++, buf);
