@@ -20,7 +20,6 @@ bool nav_has_heading();
 double nav_get_heading();
 double nav_get_correction(double lat, double lon, double targetLat, double targetLon);
 DirState nav_get_state(double correction);
-
 void nav_waypoints_init(const GeoPoint* points, int count, double lat, double lon);
 void nav_waypoints_update(double lat, double lon);
 void nav_waypoints_skip();

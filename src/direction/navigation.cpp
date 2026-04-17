@@ -244,7 +244,7 @@ void nav_waypoints_update(double lat, double lon) {
     if (d < 50.0) {
         if (closeStartTime == 0) {
             closeStartTime = now;
-        } else if (now - closeStartTime > 60000UL) {
+        } else if (now - closeStartTime > 120000UL) {
             if (wpIndex < wpCount - 1) {
                 wpIndex++;
                 justAdvanced = true;
